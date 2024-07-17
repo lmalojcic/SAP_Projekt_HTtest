@@ -1,0 +1,212 @@
+---
+title: "5pitanje"
+output: pdf_document
+date: "2024-01-14"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+require(nortest)
+```
+
+
+  
+Prvo pokušavamo odrediti broj aseva samo sa brojem iz prošlih sezona
+```{r data}
+unfiltered.2023.data <- read.csv('ATP-Matches/atp_matches_2023.csv')
+filtered.2023.data <- unfiltered.2023.data %>% filter(!(is.na(w_ace) | is.na(l_ace)))
+id.aces.2023 <- select(filtered.2023.data, winner_id, w_ace, loser_id, l_ace)
+n_distinct(unfiltered.2023.data$tourney_name[1:2273])
+id.aces.2023
+```
+
+``` {r transformacije}
+aces.2023.long.w <- id.aces.2023 %>% gather(key = "result_type", value = "aces", w_ace) %>% select(player_id = winner_id, aces)
+
+aces.2023.long.l <- id.aces.2023 %>% gather(key = "result_type", value = "aces", l_ace) %>% select(player_id = loser_id, aces)
+
+aces.2023 <- bind_rows(aces.2023.long.l, aces.2023.long.w) %>% group_by(player_id) %>% summarize(total_aces = sum(aces, na.rm = TRUE))
+
+names(aces.2023)[names(aces.2023) == "total_aces"] <- "a2023"
+aces.2023
+```
+
+
+```{r transformacije nastavak}
+
+for (year in 2022:2015) {
+  
+  file.path <- paste0("ATP-Matches/atp_matches_", year, ".csv")
+  matches.data <- read.csv(file.path) %>% filter(!(is.na(w_ace) | is.na(l_ace)))
+  matches.data.subset <- select(matches.data, winner_id, w_ace, loser_id, l_ace)
+  
+  aces.long.w <- matches.data.subset %>% select(player_id = winner_id, aces = w_ace)
+
+  aces.long.l <- matches.data.subset %>% select(player_id = loser_id, aces = l_ace)
+
+  aces <- bind_rows(aces.long.l, aces.long.w) %>% group_by(player_id) %>% summarize(total_aces = sum(aces, na.rm = TRUE))
+
+  col.name <- paste0("a", year)
+  names(aces)[names(aces) == "total_aces"] = col.name
+  aces.2023 <- merge(aces.2023, aces, by = "player_id", all.x = TRUE)
+  
+}
+aces.2023[is.na(aces.2023)] <- 0
+aces.2023
+```
+```{r grafovi}
+plot(aces.2023$a2022, aces.2023$a2023)
+plot(aces.2023$a2021, aces.2023$a2023)
+plot(aces.2023$a2020, aces.2023$a2023)
+plot(aces.2023$a2019, aces.2023$a2023)
+plot(aces.2023$a2018, aces.2023$a2023)
+plot(aces.2023$a2017, aces.2023$a2023)
+plot(aces.2023$a2016, aces.2023$a2023)
+plot(aces.2023$a2015, aces.2023$a2023)
+```
+
+
+```{r provjera dataseta}
+summary(aces.2023)
+```
+
+```{r linearni modeli}
+fit.2022 <- lm(a2023~a2022, data = aces.2023)
+fit.2021 <- lm(a2023~a2021, data = aces.2023)
+fit.2020 <- lm(a2023~a2020, data = aces.2023)
+
+plot(aces.2023$a2022,aces.2023$a2023) #graficki prikaz podataka
+lines(aces.2023$a2022,fit.2022$fitted.values,col='red') #graficki prikaz procijenjenih vrijednosti iz modela
+hist(fit.2022$residuals)
+
+plot(aces.2023$a2021,aces.2023$a2023) #graficki prikaz podataka
+lines(aces.2023$a2021,fit.2021$fitted.values,col='red') #graficki prikaz procijenjenih vrijednosti iz modela
+hist(fit.2021$residuals)
+
+plot(aces.2023$a2020,aces.2023$a2023) #graficki prikaz podataka
+lines(aces.2023$a2020,fit.2020$fitted.values,col='red')
+hist(fit.2020$residuals)
+```
+
+```{r reziduali}
+qqnorm(rstandard(fit.2022))
+qqline(rstandard(fit.2022))
+
+qqnorm(rstandard(fit.2021))
+qqline(rstandard(fit.2021))
+
+qqnorm(rstandard(fit.2020))
+qqline(rstandard(fit.2020))
+```
+
+```{r}
+ks.test(rstandard(fit.2022),'pnorm')
+lillie.test(rstandard(fit.2022))
+
+ks.test(rstandard(fit.2021),'pnorm')
+lillie.test(rstandard(fit.2022))
+
+ks.test(rstandard(fit.2020),'pnorm')
+lillie.test(rstandard(fit.2020))
+```
+Reziduali nisu normalne distribucije, al i dalje možemo dobiti korisne rezultate.
+
+```{r}
+summary(fit.2022)
+
+summary(fit.2021)
+
+summary(fit.2020)
+```
+Od prethodna 3 modela najbolji 2022 (prethodna godina). No, svi modeli su značajnijij od nul modela, što vidimo iz vrijednosti F-statistike.
+
+U sljedećem modelu problem vrlo korelirane varijable (2021 i 2020) nisu značajne
+```{r}
+fit.multiple <- lm(a2023 ~ a2022 + a2021 + a2020, data = aces.2023)
+summary(fit.multiple)
+```
+
+```{r}
+fit.all <- lm(a2023~ a2022 + a2021 + a2020 + a2019 + a2018 + a2017 + a2016 + a2015, data = aces.2023)
+summary(fit.all)
+```
+Tablica korelacija za prehodne godine:
+```{r}
+cor(cbind(aces.2023$a2022, aces.2023$a2021, aces.2023$a2020 ,aces.2023$a2019, aces.2023$a2018, aces.2023$a2017, aces.2023$a2016, aces.2023$a2015))
+```
+Želimo što novije podatke zato što se broj igrača za koji nema podataka (0 aseva) povećava što više idemo u prošlost. Uzimamo 2022 (kao najznačajniju), pa onda prva s kojom ona korelira s manje od 0.7, pa tako dalje u prošlost. Dobivaju se godine 2022, 2020 i 2018
+```{r}
+fit.adjusted <- lm(a2023 ~ a2022 + a2020 + a2018, data = aces.2023)
+summary(fit.adjusted)
+```
+Vidimo slične vrijednosti r2 kao za fit.2022 (zasad najbolji model), ali nižu vrijednost F-statisktike, što znači da je i dalje najkvalitetniji model za predviđanje aseva u tekućoj sezoni broj aseva iz prošle. Da takvi modeli daju dobre rezultate možemo provjeriti na još nekoliko godina (barem za igrače iz 2023):
+```{r nove godine}
+fit.old.2022 <- lm(a2022 ~ a2021, data = aces.2023)
+summary(fit.old.2022)
+
+fit.old.2021 <- lm(a2021 ~ a2020, data = aces.2023)
+summary(fit.old.2021)
+
+fit.old.2020 <- lm(a2020 ~ a2019, data = aces.2023)
+summary(fit.old.2020)
+```
+Sva tri dobivena modela daju dobre rezultate, što možemo vidjeti iz vrijednosti r2 i F-statistike.
+Neki od mogućih razloga koje naš model ne može objasniti je utjecaj različit broja odigranih mečeva na ukupan broj aseva, bilo zbog ozljede ili bilo čega drugog. No, rezultati modela ipak pokazuju da se uključivanjem starijih sezona gubi veći broj podataka nego li što se nadoknađuje time da može uprosječiti broj aseva kroz sezone.
+
+Pokušajmo s nekim dodatnim varijablama, dodat ćemo podatke za dvostruke pogreške (ukupan broj) i postotak servisa (prosječan).
+```{r}
+aces.ex <- bind_rows(aces.2023.long.l, aces.2023.long.w) %>% group_by(player_id) %>% summarize(total_aces = sum(aces, na.rm = TRUE))
+names(aces.ex)[names(aces.ex) == "total_aces"] = "a2023"
+
+for (year in 2022:2020) {
+  
+  file.path <- paste0("ATP-Matches/atp_matches_", year, ".csv")
+  matches.data <- read.csv(file.path) %>% filter(!(is.na(w_ace) | is.na(l_ace)))
+  matches.data.subset <- select(matches.data, winner_id, w_ace, w_df, w_svpt, loser_id, l_ace, l_df, l_svpt)
+  aces.long.w <- matches.data.subset %>% select(player_id = winner_id, aces = w_ace, dfs = w_df, svpt = w_svpt)
+
+  aces.long.l <- matches.data.subset %>% select(player_id = loser_id, aces = l_ace, dfs = l_df, svpt = l_svpt)
+
+  aces <- bind_rows(aces.long.l, aces.long.w) %>% group_by(player_id) %>% summarize(total_aces = sum(aces, na.rm = TRUE), total_df = sum(dfs, na.rm = TRUE), avg_svpt = mean(svpt, na.rm = TRUE))
+
+  col.name <- paste0("a", year)
+  names(aces)[names(aces) == "total_aces"] = col.name
+  col.name <- paste0("df", year)
+  names(aces)[names(aces) == "total_df"] = col.name
+  col.name <- paste0("sv", year)
+  names(aces)[names(aces) == "avg_svpt"] = col.name
+  aces.ex <- merge(aces.ex, aces, by = "player_id", all.x = TRUE)
+  
+}
+aces.ex[is.na(aces.ex)] <- 0
+aces.ex
+```
+```{r novi modeli}
+fit.multi.2022 <- lm(a2023 ~ a2022 + sv2022, data = aces.ex)
+summary(fit.multi.2022)
+
+fit.multi.2021 <- lm(a2023 ~ a2021 + df2021 + sv2021, data = aces.ex)
+summary(fit.multi.2021)
+```
+```{r cor za nove}
+cor(cbind(aces.ex$a2022, aces.ex$df2022, aces.ex$sv2022, aces.ex$a2021, aces.ex$df2021, aces.ex$sv2021, aces.ex$a2020, aces.ex$df2020, aces.ex$sv2020))
+```
+Primjećujemo da su u pojedinoj godini broj aseva i broj dvostrukih pogrešaka jako korelirani, pa ne možemo iz jedne godine koristiti oboje u modelu.
+```{r}
+fit.df.2022 <- lm (a2023 ~ df2022, data = aces.ex)
+summary(fit.df.2022)
+
+fit.df.2021 <- lm (a2023 ~ df2021, data = aces.ex)
+summary(fit.df.2021)
+
+fit.df.2020 <- lm (a2023 ~ df2020, data = aces.ex)
+summary(fit.df.2020)
+```
+Možemo vidjeti da dvostruke pogreške ne objašnjavaju dobar dio modela, pa ih nećemo koristiti u daljnjoj analizi zato što asevi iz iste godine će uvijek biti bolji.
+
+```{r}
+fit.random <- lm(a2023 ~ a2022 + sv2022 + a2020, data = aces.ex)
+summary(fit.random)
+```
+I dalje samo a2020 kao najbolji model.

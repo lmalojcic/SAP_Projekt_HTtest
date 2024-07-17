@@ -1,0 +1,113 @@
+---
+title: "1pitanje"
+author: "malojko"
+date: "2024-01-18"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(gridExtra)
+options(dplyr.summarise.inform = FALSE)
+```
+
+PITANJE: Kakva je distribucija mečeva na specifičnim podlogama u različitim godišnjim dobima?
+
+Prvo učitavamo podatke iz svih godina:
+
+```{r data}
+matches <- data.frame()
+for (year in 1968:2023){
+  csv.name <- paste0("ATP-Matches/atp_matches_", year, ".csv")
+  year.data <- read.csv(csv.name) %>% filter(!is.na(tourney_date) & surface != "") #odmah mičemo redove bez datuma i bez određene podloge
+  matches <- rbind(matches, year.data)
+}
+matches<- matches %>% select(surface, tourney_date)
+summary(matches)
+```
+Zatim je potrebno filtrirani dataset prilagoditi. Specifično, stupac surface se mijenja u factor, dok se stupac tourney_date mijenja u datum te se dodaje novi stupac za godišnje doba. Zima je definirana kao 12., 1. i 2. mjesec, proljeće kao 3., 4. i 5., ljeto 6., 7. i 8., a jesen 9., 10. i 11. 
+```{r prilagodjavanje}
+matches$surface <- as.factor(matches$surface)
+matches$tourney_date <- as.Date(as.character(matches$tourney_date), format("%Y%m%d"))
+matches <- matches %>% mutate(tourney_season = case_when(
+  month(tourney_date) %in% c(12,1,2) ~ "Zima", 
+  month(tourney_date) %in% c(3,4,5) ~ "Proljeće", 
+  month(tourney_date) %in% c(6,7,8) ~ "Ljeto",
+  month(tourney_date) %in% c(9,10,11) ~ "Jesen"))
+matches$tourney_season <- as.factor(matches$tourney_season)
+summary(matches)
+```
+Iz samog pregleda dataseta možemo vidjeti da se najviše mečeva igra za vrijeme proljeća i ljeta, te da se mečevi najviše igraju na tvdim podlogama i na zemlji. Zatim prikazujemo heatmap tih mečeva po 
+
+```{r}
+df.count <- matches %>% group_by(tourney_season, surface) %>% summarise(count = n()) %>% ungroup()
+pivot.table <- df.count %>% spread(surface, count, fill = 0)
+zima <- pivot.table %>% select (-tourney_season) %>% slice(4) %>% unlist()
+proljece <- pivot.table %>% select (-tourney_season) %>% slice(3) %>% unlist()
+ljeto <- pivot.table %>% select (-tourney_season) %>% slice(2) %>% unlist()
+jesen <- pivot.table %>% select (-tourney_season) %>% slice(1) %>% unlist()
+
+match.matrix <- cbind(zima, proljece, ljeto, jesen)
+heatmap(match.matrix, Colv = NA, Rowv = NA, scale = "none" , margins = c(8, 8), xlab = "Godisnje doba", ylab = "Vrsta podloge")
+```
+Možemo provjeriti kako izgleda razdioba po godišnjim dobima za pojedinu podlogu.
+```{r}
+plot1 <- ggplot(pivot.table, aes(x=tourney_season, y=Carpet, fill=tourney_season)) + geom_bar(stat = "identity", show.legend = FALSE) + geom_text(aes(y = (Carpet + 500), label = tourney_season), color = "black", size=6) + theme(axis.ticks.y = element_blank(), axis.ticks.x = element_blank(), axis.text.x = element_blank(), axis.title.x = element_blank())
+
+plot2 <- ggplot(pivot.table, aes(x=tourney_season, y=Hard, fill=tourney_season)) + geom_bar(stat = "identity", show.legend = FALSE) + geom_text(aes(y = (Hard + 1100), label = tourney_season), color = "black", size=6) + theme(axis.ticks.y = element_blank(), axis.ticks.x = element_blank(), axis.text.x = element_blank(), axis.title.x = element_blank())
+
+plot3 <- ggplot(pivot.table, aes(x=tourney_season, y=Clay, fill=tourney_season)) + geom_bar(stat = "identity", show.legend = FALSE) + geom_text(aes(y = (Clay + 1500), label = tourney_season), color = "black", size=6) + theme(axis.ticks.y = element_blank(), axis.ticks.x = element_blank(), axis.text.x = element_blank(), axis.title.x = element_blank())
+
+plot4 <- ggplot(pivot.table, aes(x=tourney_season, y=Grass, fill=tourney_season)) + geom_bar(stat = "identity", show.legend = FALSE) + geom_text(aes(y = (Grass + 1000), label = tourney_season), color = "black", size=6) + theme(axis.ticks.y = element_blank(), axis.ticks.x = element_blank(), axis.text.x = element_blank(), axis.title.x = element_blank())
+
+grid.arrange(plot1, plot2, plot3, plot4, ncol = 2)
+```
+
+Zatim možemo prikazati detaljnije za svako godišnje doba (boje uzete iz boja terena za Rolland Garros, Wimbledon i US Open):
+```{r}
+t.pivot.table <- data.frame(match.matrix) %>% rownames_to_column(var = "surface")
+
+plot1 <- ggplot(t.pivot.table, aes(x=surface, y=zima, fill=surface)) + geom_bar(stat = "identity", show.legend = FALSE) + scale_fill_manual(values=c("grey", "#AA4A44", "#84B118", "#3C638E")) + xlab(NULL)
+plot2 <- ggplot(t.pivot.table, aes(x=surface, y=proljece, fill=surface)) + geom_bar(stat = "identity", show.legend = FALSE) + scale_fill_manual(values=c("grey", "#AA4A44", "#84B118", "#3C638E")) + xlab(NULL)
+plot3 <- ggplot(t.pivot.table, aes(x=surface, y=ljeto, fill=surface)) + geom_bar(stat = "identity", show.legend = FALSE) + scale_fill_manual(values=c("grey", "#AA4A44", "#84B118", "#3C638E")) + xlab(NULL)
+plot4 <- ggplot(t.pivot.table, aes(x=surface, y=jesen, fill=surface)) + geom_bar(stat = "identity", show.legend = FALSE) + scale_fill_manual(values=c("grey", "#AA4A44", "#84B118", "#3C638E")) + xlab(NULL)
+
+grid.arrange(plot1, plot2, plot3, plot4, ncol = 2)
+```
+Neke zanimljivosti možemo primjetiti: po zimi i jeseni dominiraju tvrde podloge, često zato što su najprikladnije za zatvorene uvjete, gdje se često održavaju turniri u tim godišnjim dobima zbog neprikladnog vremena vani. Prisutnost ostalih možemo objasniti održavanjem turnira u toplijim državam i južnoj hemisferi, gdje je vrijeme pogodno za vanjske turnire i kada je u Europi zima. Zemljane podloge dominiraju u proljeće, kada su najprikladniji uvjeti za igru u mediteranskim zemljama gdje se takvi tereni često nalaze. Tijekom ljeta prisutne su sve vrste podloga, no najveći skok od ostalih godišnjih doba rade travnate podloge. Taj skok možemo objasniti da se tijekom ljeta održava najpoznatiji teniski turnir, Wimbledon. Uz njega održavaju se i drugi turniri na travi koje igrači koriste kao pripremu za Wimbledon navikavajući se na igru na travi.
+
+
+Prikazan je ukupan broj mečeva u godini zajedno s Grand Slam turnirima:
+```{r}
+matches$tourney_yday <- yday(matches$tourney_date)
+
+ggplot(matches, aes(x = tourney_yday)) +
+  geom_vline(aes(xintercept = 22), col = "#377DB8", linewidth = 2) +
+  annotate("text", x = 17, y = 0.002, label = "AUS Open", angle = 90) +
+  geom_vline(aes(xintercept = 155), col = "#AA4A44", linewidth = 2) +
+  annotate("text", x = 150, y = 0.002, label = "Roland Garros", angle = 90) +
+  geom_vline(aes(xintercept = 184), col = "#84B118", linewidth = 2) +
+  annotate("text", x = 179, y = 0.002, label = "Wimbledon", angle = 90) +
+  geom_vline(aes(xintercept = 250), col = "#3C638E", linewidth = 2) +
+  annotate("text", x = 245, y = 0.002, label = "US Open", angle = 90) +
+  geom_vline(aes(xintercept = 320), col = "lightblue4", linewidth = 2) +
+  annotate("text", x = 315, y = 0.002, label = "ATP Finals", angle = 90) +
+  geom_density() +
+  xlab("Dan u godini") +
+  ylab(NULL) +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+
+``` 
+Primjećujemo da se najviše turnira održava u danima nakon Wimbledona, tijekom ljeta, te jako pada pri kraju godine. To ima smisla uzevši u obzir da je tenis najpopularniji u Europi, gdje su krajem godine uvjeti za igru dosta loši.
+Jedna zanimljiva stvar koju uočavamo je da tijekom GS turnira broj mečeva padne u odnosu na broj mečeva neposredno prije i poslije. To možemo objasniti time da, pošto su to najvažniji turniri na teniskom kalendaru, gledatelji i sponzori su isključivo za njih zainteresirani, pa nije isplativo ogranizirati druge turnire, što rezultira time da se samo ti turniri održavaju i smanjuje se ukupan broj mečeva.
+
+
+S obzirom na to da su tijekom ljeta vrlo prisutne tri različite podloge, možemo vidjeti kako se udio tih podloga mijenja tijekom ljeta.
+```{r}
+ljeto.grouped <- matches[matches$tourney_season == "Ljeto", ] %>% group_by(tourney_yday, surface) %>% summarise(num_matches = n())
+ggplot(ljeto.grouped, aes(x=tourney_yday, y=num_matches, fill=surface)) + geom_area() + scale_fill_manual(values=c("grey", "#AA4A44", "#84B118", "#3C638E"))
+```
+Možemo vidjeti da početkom ljeta dominiraju travnate podloge. To su već ranije spomenuti "pripremni" turniri za Wimbledon i na kraju sam Wimbledon. Osim toga, mali broj mečeva na samom početku ljeta objašnjavamo time da se u to vrijeme igraju završni mečevi Roland Garossa.
+Sredinom ljeta igraju se pretežito turniri na zemljanim podlogama. No, tijekom tog razdoblja vidimo i polagani rast turnira na tvrdoj podlozi, koji služe kao uvod za US Open, koji se održava krajem ljeta. Nakon njega ulazimo u jesen gdje dominiraju turniri na tvrdim podlogama, što možemo vidjeti u rastu mečeva pri kraju grafa.
+
